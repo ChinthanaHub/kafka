@@ -41,25 +41,25 @@ Resources:
         Ec2SubnetIds: !GetAtt VpcStack.Outputs.UtilitySubnet01Ids
         Ec2SubnetAzs: !GetAtt VpcStack.Outputs.UtilitySubnet01Azs
 
-  EksStack:
-    Type: AWS::CloudFormation::Stack
-    DeletionPolicy: Delete
-    UpdateReplacePolicy: Retain
-    Properties:
-      TemplateURL:
-        Fn::Sub:
-          - https://${cfnBucketName}.s3-ap-southeast-1.amazonaws.com/${childStackName}/${cfnTemplateName}.yaml
-          - cfnBucketName: !Ref CfnS3Bucket
-            childStackName: eks
-            cfnTemplateName: eks
-      Parameters:
-        CfnS3Bucket: !Ref CfnS3Bucket
-        EnvironmentName: !Ref EnvironmentName
-        VpcId: !GetAtt VpcStack.Outputs.VpcId
-        NodeGroupSubnetIds: !GetAtt VpcStack.Outputs.NodeGroupSubnetIds
-        NodeGroupSubnetAzs: !GetAtt VpcStack.Outputs.NodeGroupSubnetAzs
-        ControlPlaneSubnetIds: !GetAtt VpcStack.Outputs.ControlPlaneSubnetIds
-        ControlPlaneSubnetAzs: !GetAtt VpcStack.Outputs.ControlPlaneSubnetAzs
+  # EksStack:
+  #   Type: AWS::CloudFormation::Stack
+  #   DeletionPolicy: Delete
+  #   UpdateReplacePolicy: Retain
+  #   Properties:
+  #     TemplateURL:
+  #       Fn::Sub:
+  #         - https://${cfnBucketName}.s3-ap-southeast-1.amazonaws.com/${childStackName}/${cfnTemplateName}.yaml
+  #         - cfnBucketName: !Ref CfnS3Bucket
+  #           childStackName: eks
+  #           cfnTemplateName: eks
+  #     Parameters:
+  #       CfnS3Bucket: !Ref CfnS3Bucket
+  #       EnvironmentName: !Ref EnvironmentName
+  #       VpcId: !GetAtt VpcStack.Outputs.VpcId
+  #       NodeGroupSubnetIds: !GetAtt VpcStack.Outputs.NodeGroupSubnetIds
+  #       NodeGroupSubnetAzs: !GetAtt VpcStack.Outputs.NodeGroupSubnetAzs
+  #       ControlPlaneSubnetIds: !GetAtt VpcStack.Outputs.ControlPlaneSubnetIds
+  #       ControlPlaneSubnetAzs: !GetAtt VpcStack.Outputs.ControlPlaneSubnetAzs
 
   # LBStack:
   #   Type: AWS::CloudFormation::Stack
