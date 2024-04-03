@@ -1,0 +1,1204 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CG EKS NonProd 01 - VPC - Private and Public subnets'
+
+# 172.29.66.0/23 Primary ALB | NAT | Control Pane | Utility
+# 100.127.141.0/24 Public ALB|TG
+# 100.98.162.0/23 Node Group 
+# 172.30.196.0/27 EFS 
+
+
+Parameters:
+  EnvironmentName:
+    Type: String
+
+  #VPC
+  VpcName:
+    Type: String
+    Default: 'CG-EKS-NonProd-01'
+
+  #Primary ALB | NAT | Control Pane
+  CidrBlock01:
+    Type: String
+    Default: 172.29.66.0/23
+
+  #Public ALB|TG
+  CidrBlock02:
+    Type: String
+    Default: 100.127.141.0/24
+
+  #Node Group 
+  CidrBlock03:
+    Type: String
+    Default: 100.98.162.0/23
+
+  # #EFS 
+  # CidrBlock04:
+  #   Type: String
+  #   Default: 172.30.196.0/27
+
+  #EKS
+  EksClusterName:
+    Type: String
+    Default: 'CG-nonprod-01'
+
+  # # TransitGateway
+  TransitGatewayId:
+    AllowedValues:
+      - tgw-0e10f1125fbf6b385 #non-production
+      - tgw-04d1ed0a1d2b0eefb #production
+      - tgw-07dcfe2cca3d93753 #internal
+    Type: String
+    Default: tgw-0e10f1125fbf6b385
+
+Resources:
+  # null resource for testing purposes.
+  NullResource:
+    Type: AWS::CloudFormation::WaitConditionHandle
+
+  #####-----Vpc-----#####
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock:
+        Ref: CidrBlock01
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      InstanceTenancy: default
+      Tags:
+        - Key: Name
+          Value: !Ref VpcName
+        - Key: Stack
+          Value: !Ref 'AWS::StackId'
+
+  VpcCidrBlock02:
+    Type: AWS::EC2::VPCCidrBlock
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock:
+        Ref: CidrBlock02
+
+  VpcCidrBlock03:
+    Type: AWS::EC2::VPCCidrBlock
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock:
+        Ref: CidrBlock03
+
+  # VpcCidrBlock04:
+  #   Type: AWS::EC2::VPCCidrBlock
+  #   Properties:
+  #     VpcId: !Ref Vpc
+  #     CidrBlock:
+  #       Ref: CidrBlock04
+
+  #####-----Public subnet-----#####
+  #Internet-facing ELB subnets
+  PublicSubnet01:
+    Type: AWS::EC2::Subnet
+    DependsOn: VpcCidrBlock02
+    Properties:
+      MapPublicIpOnLaunch: false
+      AvailabilityZone:
+        Fn::Select:
+          - 0
+          - Fn::GetAZs:
+              Ref: AWS::Region
+      CidrBlock:
+        Fn::Select:
+          - 0
+          - Fn::Cidr:
+              - !Ref CidrBlock02
+              - 2
+              - 4
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub
+            - '${environmentName}-PublicSubnet01'
+            - { environmentName: !Ref EnvironmentName }
+        - Key: !Sub
+            - kubernetes.io/cluster/${clustreName}
+            - { clustreName: !Ref EksClusterName }
+          Value: shared
+        - Key: kubernetes.io/role/elb
+          Value: '1'
+
+  PublicSubnet02:
+    Type: AWS::EC2::Subnet
+    DependsOn: VpcCidrBlock02
+    Properties:
+      MapPublicIpOnLaunch: false
+      AvailabilityZone:
+        Fn::Select:
+          - 1
+          - Fn::GetAZs:
+              Ref: AWS::Region
+      CidrBlock:
+        Fn::Select:
+          - 1
+          - Fn::Cidr:
+              - !Ref CidrBlock02
+              - 2
+              - 4
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub
+            - '${environmentName}-PublicSubnet02'
+            - { environmentName: !Ref EnvironmentName }
+        - Key: !Sub
+            - kubernetes.io/cluster/${clustreName}
+            - { clustreName: !Ref EksClusterName }
+          Value: shared
+        - Key: kubernetes.io/role/elb
+          Value: '1'
+
+  ######-----Private subnets-----#####
+
+  #EKS node group subnets
+  NodeGroupSubnet01:
+    Type: AWS::EC2::Subnet
+    DependsOn: VpcCidrBlock03
+    Properties:
+      MapPublicIpOnLaunch: false
+      AvailabilityZone:
+        Fn::Select:
+          - 0
+          - Fn::GetAZs:
+              Ref: AWS::Region
+      CidrBlock:
+        Fn::Select:
+          - 0
+          - Fn::Cidr:
+              - !Ref CidrBlock03
+              - 2
+              - 8
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub
+            - '${environmentName}-NodeGrpSubnet01'
+            - { environmentName: !Ref EnvironmentName }
+        - Key: !Sub
+            - kubernetes.io/cluster/${clustreName}
+            - { clustreName: !Ref EksClusterName }
+          Value: shared
+
+  NodeGroupSubnet02:
+    Type: AWS::EC2::Subnet
+    DependsOn: VpcCidrBlock03
+    Properties:
+      MapPublicIpOnLaunch: false
+      AvailabilityZone:
+        Fn::Select:
+          - 1
+          - Fn::GetAZs:
+              Ref: AWS::Region
+      CidrBlock:
+        Fn::Select:
+          - 1
+          - Fn::Cidr:
+              - !Ref CidrBlock03
+              - 2
+              - 8
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub
+            - '${environmentName}-NodeGrpSubnet02'
+            - { environmentName: !Ref EnvironmentName }
+        - Key: !Sub
+            - kubernetes.io/cluster/${clustreName}
+            - { clustreName: !Ref EksClusterName }
+          Value: shared
+
+  #Internal facing ELB subnets
+  InternalElbSubnet01:
+    Type: AWS::EC2::Subnet
+    Properties:
+      MapPublicIpOnLaunch: false
+      AvailabilityZone:
+        Fn::Select:
+          - 0
+          - Fn::GetAZs:
+              Ref: AWS::Region
+      CidrBlock:
+        Fn::Select:
+          - 0
+          - Fn::Cidr:
+              - !Ref CidrBlock01
+              - 2
+              - 4
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub
+            - '${environmentName}-InternalElbSubnet01'
+            - { environmentName: !Ref EnvironmentName }
+        - Key: !Sub
+            - kubernetes.io/cluster/${clustreName}
+            - { clustreName: !Ref EksClusterName }
+          Value: shared
+        - Key: kubernetes.io/role/internal-elb
+          Value: '1'
+
+  InternalElbSubnet02:
+    Type: AWS::EC2::Subnet
+    Properties:
+      MapPublicIpOnLaunch: false
+      AvailabilityZone:
+        Fn::Select:
+          - 1
+          - Fn::GetAZs:
+              Ref: AWS::Region
+      CidrBlock:
+        Fn::Select:
+          - 1
+          - Fn::Cidr:
+              - !Ref CidrBlock01
+              - 2
+              - 4
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub
+            - '${environmentName}-InternalElbSubnet02'
+            - { environmentName: !Ref EnvironmentName }
+        - Key: !Sub
+            - kubernetes.io/cluster/${clustreName}
+            - { clustreName: !Ref EksClusterName }
+          Value: shared
+        - Key: kubernetes.io/role/internal-elb
+          Value: '1'
+
+## EC2 Utility Subnet ##
+  UtilitySubnet01:
+    Type: AWS::EC2::Subnet
+    Properties:
+      MapPublicIpOnLaunch: false
+      AvailabilityZone:
+        Fn::Select:
+          - 0
+          - Fn::GetAZs:
+              Ref: AWS::Region
+      CidrBlock:
+        Fn::Select:
+          - 4
+          - Fn::Cidr:
+              - !Ref CidrBlock01
+              - 6
+              - 4
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub
+            - '${environmentName}-UtilitySubnet01'
+            - { environmentName: !Ref EnvironmentName }
+
+  UtilitySubnet02:
+    Type: AWS::EC2::Subnet
+    Properties:
+      MapPublicIpOnLaunch: false
+      AvailabilityZone:
+        Fn::Select:
+          - 1
+          - Fn::GetAZs:
+              Ref: AWS::Region
+      CidrBlock:
+        Fn::Select:
+          - 5
+          - Fn::Cidr:
+              - !Ref CidrBlock01
+              - 6
+              - 4
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub
+            - '${environmentName}-UtilitySubnet02'
+            - { environmentName: !Ref EnvironmentName }
+
+  ##EKS control plane subnets
+  ControlPlaneSubnet01:
+    Type: AWS::EC2::Subnet
+    Properties:
+      MapPublicIpOnLaunch: false
+      AvailabilityZone:
+        Fn::Select:
+          - 0
+          - Fn::GetAZs:
+              Ref: AWS::Region
+      CidrBlock:
+        Fn::Select:
+          - 2
+          - Fn::Cidr:
+              - !Ref CidrBlock01
+              - 4
+              - 4
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub
+            - '${environmentName}-CtrlPlnSubnet01'
+            - { environmentName: !Ref EnvironmentName }
+        - Key: !Sub
+            - kubernetes.io/cluster/${clustreName}
+            - { clustreName: !Ref EksClusterName }
+          Value: shared
+
+  ControlPlaneSubnet02:
+    Type: AWS::EC2::Subnet
+    Properties:
+      MapPublicIpOnLaunch: false
+      AvailabilityZone:
+        Fn::Select:
+          - 1
+          - Fn::GetAZs:
+              Ref: AWS::Region
+      CidrBlock:
+        Fn::Select:
+          - 3
+          - Fn::Cidr:
+              - !Ref CidrBlock01
+              - 4
+              - 4
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub
+            - '${environmentName}-CtrlPlnSubnet02'
+            - { environmentName: !Ref EnvironmentName }
+        - Key: !Sub
+            - kubernetes.io/cluster/${clustreName}
+            - { clustreName: !Ref EksClusterName }
+          Value: shared
+
+  #TransitGatewayAttachmnet subnets
+  TransitGatewayAttachmnetSubnet01:
+    DependsOn: VpcCidrBlock02
+    Type: AWS::EC2::Subnet
+    Properties:
+      MapPublicIpOnLaunch: false
+      AvailabilityZone:
+        Fn::Select:
+          - 0
+          - Fn::GetAZs:
+              Ref: AWS::Region
+      CidrBlock:
+        Fn::Select:
+          - 8
+          - Fn::Cidr:
+              - !Ref CidrBlock02
+              - 10
+              - 4
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub
+            - '${environmentName}-TrGwAttchSubnet01'
+            - { environmentName: !Ref EnvironmentName }
+
+  TransitGatewayAttachmnetSubnet02:
+    DependsOn: VpcCidrBlock02
+    Type: AWS::EC2::Subnet
+    Properties:
+      MapPublicIpOnLaunch: false
+      AvailabilityZone:
+        Fn::Select:
+          - 1
+          - Fn::GetAZs:
+              Ref: AWS::Region
+      CidrBlock:
+        Fn::Select:
+          - 9
+          - Fn::Cidr:
+              - !Ref CidrBlock02
+              - 10
+              - 4
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub
+            - '${environmentName}-TrGwAttchSubnet02'
+            - { environmentName: !Ref EnvironmentName }
+
+  # NAT subnets
+  NatSubnet01:
+    Type: AWS::EC2::Subnet
+    Properties:
+      MapPublicIpOnLaunch: false
+      AvailabilityZone:
+        Fn::Select:
+          - 0
+          - Fn::GetAZs:
+              Ref: AWS::Region
+      CidrBlock:
+        Fn::Select:
+          - 16
+          - Fn::Cidr:
+              - !Ref CidrBlock01
+              - 18
+              - 4
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub
+            - '${environmentName}-NatSubnet01'
+            - { environmentName: !Ref EnvironmentName }
+
+  NatSubnet02:
+    Type: AWS::EC2::Subnet
+    Properties:
+      MapPublicIpOnLaunch: false
+      AvailabilityZone:
+        Fn::Select:
+          - 1
+          - Fn::GetAZs:
+              Ref: AWS::Region
+      CidrBlock:
+        Fn::Select:
+          - 17
+          - Fn::Cidr:
+              - !Ref CidrBlock01
+              - 18
+              - 4
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub
+            - '${environmentName}-NatSubnet02'
+            - { environmentName: !Ref EnvironmentName }
+
+  # # EFS subnets
+  # EfsSubnet01:
+  #   DependsOn: VpcCidrBlock04
+  #   Type: AWS::EC2::Subnet
+  #   Properties:
+  #     MapPublicIpOnLaunch: false
+  #     AvailabilityZone:
+  #       Fn::Select:
+  #         - 0
+  #         - Fn::GetAZs:
+  #             Ref: AWS::Region
+  #     CidrBlock:
+  #       Fn::Select:
+  #         - 0
+  #         - Fn::Cidr:
+  #             - !Ref CidrBlock04
+  #             - 2
+  #             - 4
+  #     VpcId: !Ref Vpc
+  #     Tags:
+  #       - Key: Name
+  #         Value: !Sub
+  #           - '${environmentName}-EfsSubnet01'
+  #           - { environmentName: !Ref EnvironmentName }
+
+  # EfsSubnet02:
+  #   DependsOn: VpcCidrBlock04
+  #   Type: AWS::EC2::Subnet
+  #   Properties:
+  #     MapPublicIpOnLaunch: false
+  #     AvailabilityZone:
+  #       Fn::Select:
+  #         - 1
+  #         - Fn::GetAZs:
+  #             Ref: AWS::Region
+  #     CidrBlock:
+  #       Fn::Select:
+  #         - 1
+  #         - Fn::Cidr:
+  #             - !Ref CidrBlock04
+  #             - 2
+  #             - 4
+  #     VpcId: !Ref Vpc
+  #     Tags:
+  #       - Key: Name
+  #         Value: !Sub
+  #           - '${environmentName}-EfsSubnet02'
+  #           - { environmentName: !Ref EnvironmentName }
+
+
+  ######-----Internet gateway-----#####
+  InternetGateway:
+    Type: 'AWS::EC2::InternetGateway'
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub
+            - '${environmentName}-igw'
+            - { environmentName: !Ref EnvironmentName }
+
+  InternetGatewayAttachment:
+    Type: 'AWS::EC2::VPCGatewayAttachment'
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref Vpc
+
+  PrivateNatGateway01:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      ConnectivityType: private
+      PrivateIpAddress: 172.29.67.12
+      SubnetId: !Ref NatSubnet01
+      Tags:
+        - Key: Name
+          Value: !Sub
+            - '${environmentName}-PrivateNAT01'
+            - { environmentName: !Ref EnvironmentName }
+ 
+  PrivateNatGateway02:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      ConnectivityType: private
+      PrivateIpAddress: 172.29.67.26
+      SubnetId: !Ref NatSubnet02
+      Tags:
+        - Key: Name
+          Value: !Sub
+            - '${environmentName}-PrivateNAT02'
+            - { environmentName: !Ref EnvironmentName }
+
+#################################################################################################### 
+    #####-----Elastic IP-----#####
+  NatGatewayEip01:
+    DependsOn:
+      - InternetGatewayAttachment
+    Type: 'AWS::EC2::EIP'
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub
+            - '${environmentName}-NatGatewayEIP01'
+            - { environmentName: !Ref EnvironmentName }
+
+  ####-----NATGateway-----#####
+  NatGateway01:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt 'NatGatewayEip01.AllocationId'
+      SubnetId: !Ref PublicSubnet01
+      Tags:
+        - Key: Name
+          Value: !Sub
+            - '${environmentName}-NAT01'
+            - { environmentName: !Ref EnvironmentName }
+          
+####################################################################################################
+  ###-----Transit Gateway Attachment-----#####
+  TransitGatewayVpcAttachment:
+    Type: AWS::EC2::TransitGatewayVpcAttachment
+    Properties:
+      Options:
+        {
+          'ApplianceModeSupport': 'disable',
+          'DnsSupport': 'enable',
+          'Ipv6Support': 'disable',
+        }
+      SubnetIds:
+        - !Ref TransitGatewayAttachmnetSubnet01
+        - !Ref TransitGatewayAttachmnetSubnet02
+      Tags:
+        - Key: Name
+          Value: !Sub
+            - '${environmentName}-TGAtch'
+            - { environmentName: !Ref EnvironmentName }
+      TransitGatewayId: !Ref TransitGatewayId
+      VpcId: !Ref Vpc
+# ####################################################################################################
+
+  ######-----NACL-----######
+  PublicSubnetNetworkACL:
+    Type: AWS::EC2::NetworkAcl
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: PublicSubnet-NACL
+
+  NodeGroupSubnetNetworkACL:
+    Type: AWS::EC2::NetworkAcl
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: NodeGroupSubnet-NACL
+
+  InternalELBSubnetNetworkACL:
+    Type: AWS::EC2::NetworkAcl
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: InternalELBSubnet-NACL
+
+  ControlPlaneSubnetNetworkACL:
+    Type: AWS::EC2::NetworkAcl
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: ControlPlaneSubnet-NACL
+
+  NatSubnetNetworkACL:
+    Type: AWS::EC2::NetworkAcl
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: NatSubnet-NACL
+
+  EfsSubnetNetworkACL:
+    Type: AWS::EC2::NetworkAcl
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: EfsSubnet-NACL
+
+# ####################################################################################################
+
+#   # TransitGatewayAttachmnetSubnetNetworkACL:
+#   #   Type: AWS::EC2::NetworkAcl
+#   #   Properties:
+#   #     VpcId: !Ref Vpc
+#   #     Tags:
+#   #       - Key: Name
+#   #         Value: TransitGatewayAttachmnetSubnet-NACL
+
+# ####################################################################################################
+
+  ######-----Routetable-----#####
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: 'Name'
+          Value: !Sub
+            - '${environmentName}-PubRtb'
+            - { environmentName: !Ref EnvironmentName }
+
+  PrivateRouteTable01:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: 'Name'
+          Value: !Sub
+            - '${environmentName}-PvtRtb01'
+            - { environmentName: !Ref EnvironmentName }
+
+  NatRouteTable01:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: 'Name'
+          Value: !Sub
+            - '${environmentName}-NatRtb01'
+            - { environmentName: !Ref EnvironmentName }
+
+
+  PublicSubnet01RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet01
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnet02RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet02
+      RouteTableId: !Ref PublicRouteTable
+
+  #Node group subnets route table associations
+  NodeGroupSubnet01RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref NodeGroupSubnet01
+      RouteTableId: !Ref NatRouteTable01
+
+  NodeGroupSubnet02RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref NodeGroupSubnet02
+      RouteTableId: !Ref NatRouteTable01
+
+  #Internal ELB subnets route table associations
+  InternalElbSubnet01RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref InternalElbSubnet01
+      RouteTableId: !Ref PrivateRouteTable01
+  InternalElbSubnet02RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref InternalElbSubnet02
+      RouteTableId: !Ref PrivateRouteTable01
+
+  #Utility subnets route table associations
+  UtilitySubnet01RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref UtilitySubnet01
+      RouteTableId: !Ref PrivateRouteTable01
+
+  #Control plane subnets route table associations
+  ControlPlaneSubnet01RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref ControlPlaneSubnet01
+      RouteTableId: !Ref PrivateRouteTable01
+
+  ControlPlaneSubnet02RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref ControlPlaneSubnet02
+      RouteTableId: !Ref PrivateRouteTable01
+
+  # NAT subnets route table associations
+  NatSubnet01RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref NatSubnet01
+      RouteTableId: !Ref PrivateRouteTable01
+  NatSubnet02RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref NatSubnet02
+      RouteTableId: !Ref PrivateRouteTable01
+  
+#   #   #######################################################################
+#   #   #Log subnets route table associations
+#   #   # LogSubnet01RouteTableAssociation:
+#   #   #   Type: AWS::EC2::SubnetRouteTableAssociation
+#   #   #   Properties:
+#   #   #     SubnetId: !Ref LogSubnet01
+#   #   #     RouteTableId: !Ref PrivateRouteTable01
+#   #   # LogSubnet02RouteTableAssociation:
+#   #   #   Type: AWS::EC2::SubnetRouteTableAssociation
+#   #   #   Properties:
+#   #   #     SubnetId: !Ref LogSubnet02
+#   #   #     RouteTableId: !Ref PrivateRouteTable02
+#   #   # LogSubnet03RouteTableAssociation:
+#   #   #   Type: AWS::EC2::SubnetRouteTableAssociation
+#   #   #   Properties:
+#   #   #     SubnetId: !Ref LogSubnet03
+#   #   #     RouteTableId: !Ref PrivateRouteTable03
+#   #   #######################################################################
+
+  ######-----Routes-----#####
+  #Default route for Public route table
+  PublicRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  # Default route for Private route tables
+  # DefaultRoutePrivateRouteTable01:
+  #   DependsOn:
+  #        - TransitGatewayVpcAttachment
+  #   Type: AWS::EC2::Route
+  #   Properties:
+  #     RouteTableId: !Ref PrivateRouteTable01
+  #     DestinationCidrBlock: 0.0.0.0/0
+  #     TransitGatewayId: !Ref TransitGatewayId
+
+  DefaultRouteUtilitySubnet01:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable01
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway01
+
+#10.0.0.0/8#
+  DefaultPrivateRouteTable05:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable01
+      DestinationCidrBlock: 10.0.0.0/8
+      TransitGatewayId: !Ref TransitGatewayId
+
+#172.16.0.0/12#
+  DefaultPrivateRouteTable06:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable01
+      DestinationCidrBlock: 172.16.0.0/12
+      TransitGatewayId: !Ref TransitGatewayId
+
+#192.168.0.0/16#
+  DefaultPrivateRouteTable07:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable01
+      DestinationCidrBlock: 192.168.0.0/16
+      TransitGatewayId: !Ref TransitGatewayId
+
+
+  DefaultRouteNatRouteTable01:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref NatRouteTable01
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway01
+
+#10.0.0.0/8#
+  DefaultPrivateNatRouteTable01:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref NatRouteTable01
+      DestinationCidrBlock: 10.0.0.0/8
+      NatGatewayId: !Ref PrivateNatGateway01
+
+#172.16.0.0/12#
+  DefaultPrivateNatRouteTable02:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref NatRouteTable01
+      DestinationCidrBlock: 172.16.0.0/12
+      NatGatewayId: !Ref PrivateNatGateway01
+
+#192.168.0.0/16#
+  DefaultPrivateNatRouteTable03:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref NatRouteTable01
+      DestinationCidrBlock: 192.168.0.0/16
+      NatGatewayId: !Ref PrivateNatGateway01
+
+#172.30.197.0/27#
+  DefaultPrivateNatRouteTable04:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref NatRouteTable01
+      DestinationCidrBlock: 172.30.197.0/27
+      VpcPeeringConnectionId: pcx-03a671567aec60536
+ 
+#CRMCoreNode01Subnet#
+  DefaultPrivateNatRouteTable08:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref NatRouteTable01
+      DestinationCidrBlock: 172.29.111.0/28
+      VpcPeeringConnectionId: pcx-07a44091500899e1a
+      
+#CRMCoreNode02Subnet#
+  DefaultPrivateNatRouteTable09:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref NatRouteTable01
+      DestinationCidrBlock: 172.29.111.16/28
+      VpcPeeringConnectionId: pcx-07a44091500899e1a
+
+#CRMCoreNode03Subnet#
+  DefaultPrivateNatRouteTable10:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref NatRouteTable01
+      DestinationCidrBlock: 172.29.111.32/28
+      VpcPeeringConnectionId: pcx-07a44091500899e1a
+
+### > Create routes for CG New to CCBS SubSystem < ###
+# Route to node group subnet 01
+  DefaultPrivateNatRouteTable11:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref NatRouteTable01
+      DestinationCidrBlock: 172.29.94.0/24
+      VpcPeeringConnectionId: pcx-0bf9f2155e9f801d4
+
+# Route to node group subnet 02
+  DefaultPrivateNatRouteTable12:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref NatRouteTable01
+      DestinationCidrBlock: 172.29.95.0/24
+      VpcPeeringConnectionId: pcx-0bf9f2155e9f801d4
+
+# Route to ALB subnets
+  DefaultPrivateNatRouteTable13:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref NatRouteTable01
+      DestinationCidrBlock: 172.29.84.176/28
+      VpcPeeringConnectionId: pcx-0bf9f2155e9f801d4
+
+  DefaultPrivateNatRouteTable14:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref NatRouteTable01
+      DestinationCidrBlock: 172.29.84.160/28
+      VpcPeeringConnectionId: pcx-0bf9f2155e9f801d4
+
+# Route to DTE production(292389639080) ALB
+  DefaultPrivateNatRouteTable15:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref NatRouteTable01
+      DestinationCidrBlock: 172.30.39.64/26
+      VpcPeeringConnectionId: pcx-0326b8ae38a09866a
+
+  DefaultPrivateNatRouteTable16:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref NatRouteTable01
+      DestinationCidrBlock: 172.30.39.128/26
+      VpcPeeringConnectionId: pcx-0326b8ae38a09866a
+
+  DefaultPrivateNatRouteTable17:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref NatRouteTable01
+      DestinationCidrBlock: 172.30.39.192/26
+      VpcPeeringConnectionId: pcx-0326b8ae38a09866a
+
+### > Adding routes to "CGEksNonProd01-PvtRtb01" as two other subnets associated with this routing table < ###
+  # Route to node group subnet 01
+  DefaultPrivateRouteTable08:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable01
+      DestinationCidrBlock: 172.29.94.0/24
+      VpcPeeringConnectionId: pcx-0bf9f2155e9f801d4
+
+# Route to node group subnet 02
+  DefaultPrivateRouteTable09:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable01
+      DestinationCidrBlock: 172.29.95.0/24
+      VpcPeeringConnectionId: pcx-0bf9f2155e9f801d4
+
+# Route to ALB subnets
+  DefaultPrivateRouteTable10:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable01
+      DestinationCidrBlock: 172.29.84.176/28
+      VpcPeeringConnectionId: pcx-0bf9f2155e9f801d4
+
+  DefaultPrivateRouteTable11:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable01
+      DestinationCidrBlock: 172.29.84.160/28
+      VpcPeeringConnectionId: pcx-0bf9f2155e9f801d4
+
+  DefaultPrivateRouteTable12:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable01
+      DestinationCidrBlock: 172.30.38.0/28
+      VpcPeeringConnectionId: pcx-0326b8ae38a09866a
+
+# ####################################################################################################
+
+# # #####-----Vpc Flow Log----#####
+# # #   FlowLogsRole:
+# # #     Type: 'AWS::IAM::Role'
+# # #     Properties:
+# # #       RoleName: VPCFlowLogsRole-CRM-Core-01
+# # #       AssumeRolePolicyDocument:
+# # #         Version: '2012-10-17'
+# # #         Statement:
+# # #         - Effect: Allow
+# # #           Principal:
+# # #             Service: Vpc-flow-logs.amazonaws.com
+# # #           Action: sts:AssumeRole
+# # #       Policies:
+# # #         - PolicyName: "VPCFlowLogs-Policy"
+# # #           PolicyDocument:
+# # #             Version: 2012-10-17
+# # #             Statement:
+# # #               - Effect: Allow
+# # #                 Action:
+# # #                   - 'logs:CreateLogStream'
+# # #                   - 'logs:CreateLogGroup'
+# # #                   - 'logs:PutLogEvents'
+# # #                   - 'logs:DescribeLogGroups'
+# # #                   - 'logs:DescribeLogStreams'
+# # #                 Resource: '*'
+
+# # #   CloudWatchLogGroup01:
+# # #     Type: AWS::Logs::LogGroup
+# # #     Properties:
+# # # #      KmsKeyId: String
+# # #       LogGroupName: CRM-Core-VPCFlowLogs
+# # #       RetentionInDays: 30
+
+# # #   VPCFlowLogs:
+# # #     Type: AWS::EC2::FlowLog
+# # #     Properties:
+# # #       DeliverLogsPermissionArn: !GetAtt FlowLogsRole.Arn
+# # #       LogDestination: !GetAtt CloudWatchLogGroup01.Arn
+# # #       LogDestinationType: cloud-watch-logs
+# # #       LogFormat: '${version} ${account-id} ${interface-id} ${srcaddr} ${dstaddr} ${srcport} ${dstport} ${protocol} ${packets} ${bytes} ${start} ${end} ${action} ${log-status} ${Vpc-id} ${subnet-id} ${instance-id} ${tcp-flags} ${type} ${pkt-srcaddr} ${pkt-dstaddr} ${az-id}'
+# # # #      LogGroupName: String
+# # #       MaxAggregationInterval: 600
+# # #       ResourceId: !Ref Vpc
+# # #       ResourceType: Vpc
+# # # #      Tags:
+# # # #       - Tag
+# # #       TrafficType: ALL
+# ####################################################################################################
+
+Outputs:
+  VpcId:
+    Description: The VPC Id
+    Value: !Ref Vpc
+
+  PublicSubnetIds:
+    Description: Public subnet IDs in the Vpc
+    Value:
+      !Join [
+        ',',
+        [!Ref PublicSubnet01, !Ref PublicSubnet02],
+      ]
+
+  PublicSubnetAzs:
+    Description: Public subnet IDs in the Vpc
+    Value:
+      !Join [
+        ',',
+        [
+          !GetAtt PublicSubnet01.AvailabilityZone,
+          !GetAtt PublicSubnet02.AvailabilityZone,
+        ],
+      ]
+
+  NodeGroupSubnetIds:
+    Description: Node group subnet IDs in the Vpc
+    Value:
+      !Join [
+        ',',
+        [
+          !Ref NodeGroupSubnet01,
+          !Ref NodeGroupSubnet02,
+        ],
+      ]
+
+  NodeGroupSubnetAzs:
+    Description: Public subnet IDs in the Vpc
+    Value:
+      !Join [
+        ',',
+        [
+          !GetAtt NodeGroupSubnet01.AvailabilityZone,
+          !GetAtt NodeGroupSubnet02.AvailabilityZone,
+        ],
+      ]
+
+  InternalElbSubnetIds:
+    Description: Inernal ELB subnet IDs in the Vpc
+    Value:
+      !Join [
+        ',',
+        [
+          !Ref InternalElbSubnet01,
+          !Ref InternalElbSubnet02,
+        ],
+      ]
+
+  InternalELBSubnetAzs:
+    Description: Public subnet IDs in the Vpc
+    Value:
+      !Join [
+        ',',
+        [
+          !GetAtt InternalElbSubnet01.AvailabilityZone,
+          !GetAtt InternalElbSubnet02.AvailabilityZone,
+        ],
+      ]
+
+  ControlPlaneSubnetIds:
+    Description: Control plane subnet IDs in the Vpc
+    Value:
+      !Join [
+        ',',
+        [
+          !Ref ControlPlaneSubnet01,
+          !Ref ControlPlaneSubnet02,
+        ],
+      ]
+
+  ControlPlaneSubnetAzs:
+    Description: Public subnet IDs in the Vpc
+    Value:
+      !Join [
+        ',',
+        [
+          !GetAtt ControlPlaneSubnet01.AvailabilityZone,
+          !GetAtt ControlPlaneSubnet02.AvailabilityZone,
+        ],
+      ]
+
+  UtilitySubnet01Ids:
+    Description: Control plane subnet IDs in the Vpc
+    Value:
+      !Join [
+        ',',
+        [
+          !Ref UtilitySubnet01,
+          !Ref UtilitySubnet02,
+        ],
+      ]
+
+  UtilitySubnet01Azs:
+    Description: Public subnet IDs in the Vpc
+    Value:
+      !Join [
+        ',',
+        [
+          !GetAtt UtilitySubnet01.AvailabilityZone,
+          !GetAtt UtilitySubnet02.AvailabilityZone,
+        ],
+      ]
+
+
+
+  # EfsSubnetIds:
+  #   Description: EFS subnet IDs in the Vpc
+  #   Value:
+  #     !Join [
+  #       ',',
+  #       [
+  #         !Ref EfsSubnet01,
+  #         !Ref EfsSubnet02,
+  #       ],
+  #     ]
+
+  # NatSubnetIds:
+  #   Description: Utility subnet IDs in the Vpc
+  #   Value:
+  #     !Join [
+  #       ',',
+  #       [!Ref NatSubnet01, !Ref NatSubnet02, !Ref NatSubnet03],
+  #     ]
+
+
+#   ##########################################################################################
+#   # LogSubnetIds:
+#   #   Description: Log subnet IDs in the Vpc
+#   #   Value: !Join [',', [!Ref LogSubnet01, !Ref LogSubnet02, !Ref LogSubnet03]]
+
+#   # LogSubnetAzs:
+#   #   Description: Log subnet IDs in the Vpc
+#   #   Value:
+#   #     !Join [
+#   #       ',',
+#   #       [
+#   #         !GetAtt LogSubnet01.AvailabilityZone,
+#   #         !GetAtt LogSubnet02.AvailabilityZone,
+#   #         !GetAtt LogSubnet03.AvailabilityZone,
+#   #       ],
+#   #     ]
+#   ##########################################################################################
+#   # TransitGatewayVpcAttchmentId:
+#   #   Description: TransitGateway VPC attachment ID
+#   #   Value: !Ref TransitGatewayVpcAttachment
