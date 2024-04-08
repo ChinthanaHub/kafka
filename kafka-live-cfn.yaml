@@ -1,0 +1,27 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: s3 bucket for cloudfomation templates with versioning enabled
+
+Resources:
+  kafkaS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: kafka-live-cfn
+      VersioningConfiguration:
+        Status: Enabled
+      Tags:
+        - Key: Name
+          Value: kafka-live-cfn
+        - Key: map-migrated
+          Value: d-server-03urz7jkjyk1qu
+
+  S3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: kafka-live-chef
+      VersioningConfiguration:
+        Status: Enabled
+      Tags:
+        - Key: Name
+          Value: kafka-live-chef
+        - Key: map-migrated
+          Value: d-server-03urz7jkjyk1qu

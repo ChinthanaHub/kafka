@@ -1,0 +1,275 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Kafka Production EC2 Stack'
+
+Parameters:
+  EnvironmentName:
+    Type: String
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  BastionHostSubnetIds:
+    Type: String
+  BastionHostSubnetAzs:
+    Type: String
+
+  #Chef association
+  ChefS3BucketName:
+    Type: String
+    Default: kafka-live-chef
+  ChefArtifactName:
+    Type: String
+    Default: users.zip
+  ChefAssociationName:
+    Type: String
+    Default: CreateAdminUsers
+
+  #SSM association
+  SsmS3AccessPolicyName:
+    Type: String
+    Default: SsmS3AccessPolicy
+  SsmS3AccessPolicyDescription:
+    Type: String
+    Default: 'S3 access policy for SSM'
+
+  #Instance profile role
+  Ec2InstanceProfileRoleName:
+    Type: String
+    Default: InstanceProfileRole
+  Ec2InstanceProfileRoleDescription:
+    Type: String
+    Default: 'Role for EC2 instance profile'
+
+  #BastionHost Security group
+  BastionHostSecGrpName:
+    Type: String
+    Default: BastionHostSecGrp
+  BastionHostSecGrpDescription:
+    Type: String
+    Default: Bastionhost security group
+  #SSH key
+  BastionHostSshKeyPairName:
+    Type: String
+    Default: Kafka-prod-BastionHost
+
+Resources:
+  #null resource for testing purposes.
+  NullResource:
+    Type: AWS::CloudFormation::WaitConditionHandle
+  ####################
+  ####----IAM----#####
+  ####################
+  # S3 Access policy for instance profile
+  SsmS3AccessPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: !Ref SsmS3AccessPolicyDescription
+      ManagedPolicyName: !Sub
+        - ${environmentName}-${policyName}
+        - environmentName: !Ref EnvironmentName
+          policyName: !Ref SsmS3AccessPolicyName
+      Path: /
+      PolicyDocument:
+        Fn::Sub:
+          - |
+            {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "s3:GetObject"
+                  ],
+                  "Resource": [
+                    "arn:${AWS::Partition}:s3:::aws-ssm-${AWS::Region}/*",
+                    "arn:${AWS::Partition}:s3:::aws-windows-downloads-${AWS::Region}/*",
+                    "arn:${AWS::Partition}:s3:::amazon-ssm-${AWS::Region}/*",
+                    "arn:${AWS::Partition}:s3:::amazon-ssm-packages-${AWS::Region}/*",
+                    "arn:${AWS::Partition}:s3:::${AWS::Region}-birdwatcher-prod/*",
+                    "arn:${AWS::Partition}:s3:::patch-baseline-snapshot-${AWS::Region}/*"
+                  ]
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "s3:GetBucketLocation",
+                    "s3:GetEncryptionConfiguration",
+                    "s3:GetObject",
+                    "s3:ListBucket",
+                    "s3:PutObject",
+                    "s3:PutObjectAcl"
+                  ],
+                  "Resource": [
+                    "arn:${AWS::Partition}:s3:::${chefBucketName}",
+                    "arn:${AWS::Partition}:s3:::${chefBucketName}/*"
+                  ]
+                }
+              ]
+            }
+          - chefBucketName: !Ref ChefS3BucketName
+
+  #Instance profile
+  EC2InstanceProfileRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument: |
+        {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "ec2.amazonaws.com"
+              },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        }
+      Description: !Ref Ec2InstanceProfileRoleDescription
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore'
+        - 'arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy'
+        - !Ref SsmS3AccessPolicy
+      Path: /
+      RoleName: !Sub
+        - ${environmentName}-${roleName}
+        - environmentName: !Ref EnvironmentName
+          roleName: !Ref Ec2InstanceProfileRoleName
+      Tags:
+        - Key: Name
+          Value: !Sub
+            - ${environmentName}-SSMInstanceProfileRole
+            - environmentName: !Ref EnvironmentName
+
+  InstanceProfile:
+    Type: 'AWS::IAM::InstanceProfile'
+    Properties:
+      Path: /
+      Roles:
+        - !Ref EC2InstanceProfileRole
+
+  #######################
+  #####-----EC2-----#####
+  #######################
+  #Security group
+  BastionHostSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: !Ref BastionHostSecGrpDescription
+      GroupName: !Sub
+        - ${environmentName}-${securityGroupName}
+        - environmentName: !Ref EnvironmentName
+          securityGroupName: !Ref BastionHostSecGrpName
+      VpcId: !Ref VpcId
+      Tags:
+        - Key: Name
+          Value: !Sub
+            - ${environmentName}-BastionSecGrp
+            - environmentName: !Ref EnvironmentName
+
+  BastionHostSecurityGroupIngress:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      GroupId: !Ref BastionHostSecurityGroup
+      IpProtocol: 'tcp'
+      CidrIp: '172.16.0.0/12'
+      FromPort: 22
+      ToPort: 22
+      Description: 'SSH RULE'
+
+
+  #EC2
+  BastionHost01:
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      AvailabilityZone:
+        Fn::Select: ['0', !Split [',', !Ref BastionHostSubnetAzs]]
+      IamInstanceProfile: !Ref InstanceProfile
+      ImageId: ami-0a650571bf3c9fab0
+      InstanceType: t4g.nano
+      KeyName: !Ref BastionHostSshKeyPairName
+      Monitoring: false
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            DeleteOnTermination: true
+            Iops: 3000
+            VolumeSize: 100
+            VolumeType: gp3
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: false
+          # PrivateIpAddress: 172.30.34.134
+          DeleteOnTermination: true
+          DeviceIndex: '0'
+          GroupSet:
+            - !Ref BastionHostSecurityGroup
+          SubnetId:
+            Fn::Select: ['0', !Split [',', !Ref BastionHostSubnetIds]]
+      SourceDestCheck: yes
+      UserData: 
+        Fn::Base64:
+          !Sub |
+            #!/bin/bash
+            curl -O https://s3.us-west-2.amazonaws.com/amazon-eks/1.28.5/2024-01-04/bin/linux/amd64/kubectl
+            chmod +x kubectl
+            cp kubectl /usr/bin/
+            yum install -y java-1.8.0-openjdk
+      Tags:
+        - Key: 'Name'
+          Value: !Sub
+            - ${environmentName}-bastionhost
+            - environmentName: !Ref EnvironmentName
+        - Key: Stack
+          Value: !Ref 'AWS::StackId'
+        - Key: map-migrated
+          Value: d-server-03urz7jkjyk1qu
+
+  ###################################
+  #####-----Systems Manager-----#####
+  ###################################
+  SSMAgentAutoUpdateAssociation:
+    Type: AWS::SSM::Association
+    Properties:
+      AssociationName: !Sub
+        - ${environmentName}-UpdateSSMAgent
+        - environmentName: !Ref EnvironmentName
+      Name: AWS-UpdateSSMAgent
+      ScheduleExpression: cron(0 2 ? * SUN *)
+      Targets:
+        - Key: InstanceIds
+          Values:
+            - !Ref BastionHost01
+
+  ChefAssociation:
+    Type: AWS::SSM::Association
+    Properties:
+      ApplyOnlyAtCronInterval: false
+      AssociationName: !Sub
+        - ${environmentName}-${chefAssociationName}
+        - environmentName: !Ref EnvironmentName
+          chefAssociationName: !Ref ChefAssociationName
+      ComplianceSeverity: UNSPECIFIED
+      Name: AWS-ApplyChefRecipes
+      Parameters:
+        SourceType:
+          - S3
+        SourceInfo:
+          - Fn::Sub:
+              - '{"path":"https://${ChefS3BucketName}.s3-${AWS::Region}.amazonaws.com/${ChefArtifact}"}'
+              - ChefS3BucketName: !Ref ChefS3BucketName
+                ChefArtifact: !Ref ChefArtifactName
+        RunList:
+          - 'recipe[users::default]'
+        ChefClientVersion:
+          - '14'
+        WhyRun:
+          - 'False'
+      ScheduleExpression: 'cron(45 23 * * ? *)'
+      Targets:
+        - Key: InstanceIds
+          Values:
+            - !Ref BastionHost01
+
+Outputs:
+  BastionHostSecurityGroupId:
+    Description: BastionHost security group ID
+    Value: !GetAtt BastionHostSecurityGroup.GroupId

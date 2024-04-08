@@ -1,108 +1,46 @@
 ---
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'CG Non-Production 01'
+Description: 'Kafka production deployment'
 
 Parameters:
   CfnS3Bucket:
     Type: String
-    Default: cg-eks-nonprod-01-cfn
-    Description: S3 bucket name of the cloudformation template located.
+    Default: kafka-live-cfn
+    Description: S3 bucket name of the rds cloudformation template located.
   EnvironmentName:
     Type: String
-    Default: CGEksNonProd01
+    Default: KafkaProd01
 
 Resources:
-#   VpcStack:
-#     Type: AWS::CloudFormation::Stack
-#     DeletionPolicy: Delete
-#     UpdateReplacePolicy: Retain
-#     Properties:
-#       TemplateURL:
-#         Fn::Sub:
-#           - https://${cfnBucketName}.s3-ap-southeast-1.amazonaws.com/${childStackName}/${cfnTemplateName}.yaml
-#           - cfnBucketName: !Ref CfnS3Bucket
-#             childStackName: vpc
-#             cfnTemplateName: vpc
-#       Parameters:
-#         EnvironmentName: !Ref EnvironmentName
-        
-#   Ec2Stack:
-#     Type: AWS::CloudFormation::Stack
-#     Properties:
-#       TemplateURL:
-#         Fn::Sub:
-#           - https://${cfnBucketName}.s3-ap-southeast-1.amazonaws.com/${childStackName}/${cfnTemplateName}.yaml
-#           - cfnBucketName: !Ref CfnS3Bucket
-#             childStackName: ec2
-#             cfnTemplateName: ec2
-#       Parameters:
-#         EnvironmentName: !Ref EnvironmentName
-#         VpcId: !GetAtt VpcStack.Outputs.VpcId
-#         Ec2SubnetIds: !GetAtt VpcStack.Outputs.UtilitySubnet01Ids
-#         Ec2SubnetAzs: !GetAtt VpcStack.Outputs.UtilitySubnet01Azs
+  # null resource for testing purposes.
+  NullResource:
+    Type: AWS::CloudFormation::WaitConditionHandle
 
-#   # EksStack:
-#   #   Type: AWS::CloudFormation::Stack
-#   #   DeletionPolicy: Delete
-#   #   UpdateReplacePolicy: Retain
-#   #   Properties:
-#   #     TemplateURL:
-#   #       Fn::Sub:
-#   #         - https://${cfnBucketName}.s3-ap-southeast-1.amazonaws.com/${childStackName}/${cfnTemplateName}.yaml
-#   #         - cfnBucketName: !Ref CfnS3Bucket
-#   #           childStackName: eks
-#   #           cfnTemplateName: eks
-#   #     Parameters:
-#   #       CfnS3Bucket: !Ref CfnS3Bucket
-#   #       EnvironmentName: !Ref EnvironmentName
-#   #       VpcId: !GetAtt VpcStack.Outputs.VpcId
-#   #       NodeGroupSubnetIds: !GetAtt VpcStack.Outputs.NodeGroupSubnetIds
-#   #       NodeGroupSubnetAzs: !GetAtt VpcStack.Outputs.NodeGroupSubnetAzs
-#   #       ControlPlaneSubnetIds: !GetAtt VpcStack.Outputs.ControlPlaneSubnetIds
-#   #       ControlPlaneSubnetAzs: !GetAtt VpcStack.Outputs.ControlPlaneSubnetAzs
-
-#   # LBStack:
-#   #   Type: AWS::CloudFormation::Stack
-#   #   DeletionPolicy: Delete
-#   #   UpdateReplacePolicy: Retain
-#   #   Properties:
-#   #     TemplateURL:
-#   #       Fn::Sub:
-#   #         - https://${cfnBucketName}.s3-ap-southeast-1.amazonaws.com/${childStackName}/${cfnTemplateName}.yaml
-#   #         - cfnBucketName: !Ref CfnS3Bucket
-#   #           childStackName: lb
-#   #           cfnTemplateName: lb
-#   #     Parameters:
-#   #       EnvironmentName: !Ref EnvironmentName
-#   #       VpcId: !GetAtt VpcStack.Outputs.VpcId
-#   #       PublicSubnetIds: !GetAtt VpcStack.Outputs.PublicSubnetIds
-#   #       PublicSubnetAzs: !GetAtt VpcStack.Outputs.PublicSubnetAzs
-
-# # VpcId:
-
-# #   EnvironmentName:
-
-# #   SubnetIds:
-
-# #   SubnetAzs:
-#   EfsStack:
-#     Type: AWS::CloudFormation::Stack
-#     DeletionPolicy: Delete
-#     UpdateReplacePolicy: Retain
-#     Properties:
-#       TemplateURL:
-#         Fn::Sub:
-#           - https://${cfnBucketName}.s3-ap-southeast-1.amazonaws.com/${childStackName}/${cfnTemplateName}.yaml
-#           - cfnBucketName: !Ref CfnS3Bucket
-#             childStackName: efs
-#             cfnTemplateName: efs
-#       Parameters:
-#         EnvironmentName: !Ref EnvironmentName
-#         VpcId: !GetAtt VpcStack.Outputs.VpcId
-#         SubnetIds: !GetAtt VpcStack.Outputs.UtilitySubnet01Ids
-#         SubnetAzs: !GetAtt VpcStack.Outputs.UtilitySubnet01Azs
-
-# # Outputs:
-# #   TransitGatewayVpcAttchmentId:
-# #     Description: TransitGateway VPC attachment ID
-# #     Value: !GetAtt VpcStack.Outputs.TransitGatewayVpcAttchmentId
+  VpcStack:
+    Type: AWS::CloudFormation::Stack
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Properties:
+      TemplateURL:
+        Fn::Sub:
+          - https://${cfnBucketName}.s3-ap-southeast-1.amazonaws.com/${childStackName}/${cfnTemplateName}.yaml
+          - cfnBucketName: !Ref CfnS3Bucket
+            childStackName: vpc
+            cfnTemplateName: vpc
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+  
+  Ec2Stack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL:
+        Fn::Sub:
+          - https://${cfnBucketName}.s3-ap-southeast-1.amazonaws.com/${childStackName}/${cfnTemplateName}.yaml
+          - cfnBucketName: !Ref CfnS3Bucket
+            childStackName: ec2
+            cfnTemplateName: ec2
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        VpcId: !GetAtt VpcStack.Outputs.VpcId
+        BastionHostSubnetIds: !GetAtt VpcStack.Outputs.BastionHostSubnetIds
+        BastionHostSubnetAzs: !GetAtt VpcStack.Outputs.BastionHostSubnetAzs
