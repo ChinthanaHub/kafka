@@ -6,7 +6,7 @@
 
 # Crash log files
 
-./vpc
+vpc/
 vpc(13).yaml
 ec2(5).yaml
 .kafka-live-cfn.yaml
